@@ -232,7 +232,8 @@ int main(void){
 	PaStreamParameters inputDevice = {0};
 	short *buffer = (short*)malloc(sizeof(short) * frames_per_buffer);		//Buffer initialize, using short whule I have the mic input as int16. Must use Malloc for proper buffer handling.
 	inputDevice.channelCount = 1;	//Device only has once channel
-	inputDevice.device = 1;	//
+	inputDevice.device = Pa_GetDefaultInputDevice();	// Use the default input device. If this doesn't work, set your system default in OS > Settings
+	//inputDevice.device = 1;	// If the device ID is known, you can manually enter it.
 	inputDevice.hostApiSpecificStreamInfo = NULL;
 	inputDevice.suggestedLatency = Pa_GetDeviceInfo(inputDevice.device)->defaultHighInputLatency;	//From device info, default low latency = 0.0080
 	inputDevice.sampleFormat = paInt16; //Use int16 for now
@@ -294,7 +295,7 @@ int main(void){
 	if(system_mode == MODE_LEARN){
 		printf("Speaker voice characteristics recording beginning in 5 seconds.\n");
 		Pa_Sleep(5000);
-		printf("Read some sample text for the next %d seconds \n");
+		printf("Read some sample text for the next %d seconds \n", secs_to_rec);
 		pa_err = Pa_StartStream(stream); //Start Stream	
 		if(pa_err != paNoError){
 			printf("PortAudio Start Stream Error: %s\n", Pa_GetErrorText(pa_err));

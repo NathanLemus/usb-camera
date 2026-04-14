@@ -10,7 +10,10 @@ sudo apt-get install ffmpeg x264 libx264-dev
 
 Make the file
 ``` bash
-gcc -o test_audio PortAudio_and_AubioMFCC_260330.c -lportaudio -laubio
+gcc -Wall -Wextra -I User_Detection_041326.h User_Detection_041326.c -o User_Detection -lportaudio -laubio -lm
+
+# The old version:
+gcc -o test_audio PortAudio_and_AubioMFCC_260407.c -lportaudio -laubio
 ```
 
 For running v4l2_camera.cpp
