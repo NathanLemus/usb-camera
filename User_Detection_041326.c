@@ -23,6 +23,7 @@
 #include "portaudio.h"
 #include <aubio/aubio.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 // Define magic number variable
 #define ENERGY_THRESHOLD 0.0001f
@@ -147,9 +148,9 @@ float compute_mfcc_difference(float *user_mfccs, float *mfcc_avg, int n_coeffs){
 	float diff_to_user = 0;
 	float total_diff_to_user = 0;
 	for(k = 0; k < n_coeffs; k++){
-			diff_to_user = user_mfccs[k] - mfcc_avg[k];
-			total_diff_to_user += diff_to_user * diff_to_user;
-		}
+		diff_to_user = user_mfccs[k] - mfcc_avg[k];
+		total_diff_to_user += diff_to_user * diff_to_user;
+	}
 	total_diff_to_user = sqrt(total_diff_to_user);
 	return total_diff_to_user;
 }
@@ -217,6 +218,13 @@ void voice_process(short *buffer, int frames_per_buffer){
 }
 
 
+// Using ctypes in Python can be tricky without a method to kill
+// 	the .so
+atomic_int stop_flag = 0;
+void stop(){
+	stop_flag = 1;
+}
+
 
 int main(void){
 	
@@ -281,7 +289,7 @@ int main(void){
 	// User detection
 	
 	//Reload MFCCs if possible
-	FILE *f = fopen("user_mfcc.bin", "rb");
+	FILE *f = fopen("mfcc_files/user_mfcc.bin", "rb");
 	if (f == NULL){
 		printf("No MFCC info found. Recommend running training mode \n");
 	}
@@ -302,47 +310,51 @@ int main(void){
 			return -1;
 		}
 		while(buffers_recorded < buffers_to_rec){	//Continue recording until deisred buffers are recorded
-		pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
-		if (pa_err != 0){
-			printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
-			break;
-		}
-		
-		//Processing and MFCC
-		sum_energy = compute_sound_energy(frames_per_buffer, buffer); 
-		if (sum_energy > ENERGY_THRESHOLD){
-			for (int k = 0; k < frames_per_buffer; k++){
-				process_input->data[k] = buffer[k] / 32768.0f;
+			pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
+			if (pa_err != 0){
+				printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
+				break;
 			}
-			compute_mfcc(pv, process_input, fftgrain, mfcc, mfcc_out);	//compute mfccs
-			accumulate_mfcc(&cm, mfcc_out); //Accumulate MFCCs for processing
+
+			//Processing and MFCC
+			sum_energy = compute_sound_energy(frames_per_buffer, buffer); 
+			if (sum_energy > ENERGY_THRESHOLD){
+				for (int k = 0; k < frames_per_buffer; k++){
+					process_input->data[k] = buffer[k] / 32768.0f;
+				}
+				compute_mfcc(pv, process_input, fftgrain, mfcc, mfcc_out);	//compute mfccs
+				accumulate_mfcc(&cm, mfcc_out); //Accumulate MFCCs for processing
+			}
+			buffers_recorded++;
 		}
-		buffers_recorded++;
+
+		if(cm.count > 0){
+			average_mfcc(&cm);
+		}
+		for(int k = 0; k < N_COEFFS; k++){
+			user.user_mfcc[k] = cm.mfcc_avg[k];
+		}
+
+		system_mode = MODE_DETECT;
+		buffers_recorded = 0;
+		reset_cumulative_mfcc(&cm);
+
+		// Save MFCCs
+		FILE *f = fopen("mfcc_files/user_mfcc.bin", "wb");
+		if (f == NULL){
+			printf("Cannot save MFCC\n");
+		}
+		else{
+			fwrite(user.user_mfcc, sizeof(float), N_COEFFS, f);
+			fclose(f);
+		}
+
+		printf("Training Complete \n");
 	}
-	if(cm.count > 0){
-		average_mfcc(&cm);
-	}
-	for(int k = 0; k < N_COEFFS; k++){
-		user.user_mfcc[k] = cm.mfcc_avg[k];
-	}	
-	system_mode = MODE_DETECT;
-	buffers_recorded = 0;
-	reset_cumulative_mfcc(&cm);
-	// Save MFCCs
-	FILE *f = fopen("user_mfcc.bin", "wb");
-	if (f == NULL){
-		printf("Cannot save MFCC\n");
-	}
-	else{
-		fwrite(user.user_mfcc, sizeof(float), N_COEFFS, f);
-		fclose(f);
-	}
-	
-	printf("Training Complete \n");
-}
 
 	frames_until_update = UPDATE_SECONDS * (sample_rate / frames_per_buffer);
-	while(1){	//Continue recording
+	// Continue recording
+	while(!stop_flag){
 		if (Pa_IsStreamStopped(stream)){
 			pa_err = Pa_StartStream(stream);
 			if (pa_err != 0){
@@ -360,7 +372,6 @@ int main(void){
 		//fwrite(buffer, 2, frames_per_buffer, test_file_ptr);	//Write to .raw test_file. Writing "frames_per_buffer" samples into file, data size is 2 (2 bytes, small) 
 		
 		//Processing and MFCC
-		
 		voice_process(buffer, frames_per_buffer);
 							
 		buffers_recorded++;

@@ -1,3 +1,5 @@
+mfcc_files/user_mfcc.bin
+*.so
 *.o
 *.raw
 *.mjpg
