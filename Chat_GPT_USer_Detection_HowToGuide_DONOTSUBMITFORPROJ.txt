@@ -1,0 +1,165 @@
+USER VOICE MFCC DETECTION MODULE - INTEGRATION GUIDE
+
+OVERVIEW
+
+This module performs simple speaker detection using MFCC features extracted from microphone audio.
+
+The system has two modes:
+1. MODE_LEARN
+   - Records a short sample of a user speaking
+   - Builds an average MFCC profile (user fingerprint)
+   - Saves it to disk
+
+2. MODE_DETECT
+   - Continuously processes microphone audio
+   - Extracts MFCC features
+   - Compares live MFCCs to stored user profile
+   - Outputs a binary detection signal (user_detected)
+
+------------------------------------------------------------
+
+KEY OUTPUT
+
+The primary output is:
+
+user_detected (int)
+- 1 = user detected (voice matches stored profile)
+- 0 = no match / different speaker
+
+------------------------------------------------------------
+
+HOW TO USE IN YOUR APPLICATION
+
+1. Initialize system
+   - Set system_mode = MODE_LEARN or MODE_DETECT
+   - Initialize PortAudio stream
+   - Initialize Aubio MFCC objects
+
+2. Audio loop (required)
+   Continuously read audio frames:
+
+   Pa_ReadStream(stream, buffer, frames_per_buffer);
+
+3. Pass audio into processing function
+
+   voice_process(buffer, frames_per_buffer);
+
+4. Read result
+
+   user_detected is updated internally and can be read globally
+
+------------------------------------------------------------
+
+TRAINING FLOW (MODE_LEARN)
+
+When system_mode == MODE_LEARN:
+
+1. Collect audio frames from microphone
+2. Compute energy per frame
+3. If energy > ENERGY_THRESHOLD:
+   - Extract MFCC features
+   - Accumulate MFCC vectors
+4. After ~15 seconds:
+   - Compute average MFCC vector
+   - Store as user profile
+
+5. Save to disk:
+
+   user_mfcc.bin
+
+This file contains:
+- float[N_COEFFS] MFCC vector
+
+------------------------------------------------------------
+
+DETECTION FLOW (MODE_DETECT)
+
+When system_mode == MODE_DETECT:
+
+1. Continuously read audio buffers
+2. If energy > ENERGY_THRESHOLD:
+   - Extract MFCC
+   - Compare to stored user MFCC
+3. Compute Euclidean distance:
+   - lower = closer match
+4. Smooth result over time
+5. Apply thresholds:
+   - DETECTION_ON_THRESHOLD
+   - DETECTION_OFF_THRESHOLD
+
+Output:
+- user_detected toggles on/off
+
+------------------------------------------------------------
+
+FILE STORAGE FORMAT
+
+File: user_mfcc.bin
+
+Contents:
+- Binary float array of size N_COEFFS (default 13)
+
+How to read:
+
+FILE *f = fopen("user_mfcc.bin", "rb");
+fread(user_mfcc, sizeof(float), N_COEFFS, f);
+
+How to write:
+
+FILE *f = fopen("user_mfcc.bin", "wb");
+fwrite(user_mfcc, sizeof(float), N_COEFFS, f);
+
+------------------------------------------------------------
+
+IMPORTANT PARAMETERS
+
+ENERGY_THRESHOLD
+- Filters out background noise
+- Increase if false positives occur
+- Decrease if speech is missed
+
+N_COEFFS
+- MFCC feature size (default 13)
+- Must match training and detection
+
+UPDATE_SECONDS
+- Controls how often comparisons happen
+- Lower = more responsive but more CPU usage
+
+SMOOTH_WINDOW
+- Averages detection stability
+- Higher = more stable but slower response
+
+------------------------------------------------------------
+
+INTEGRATION NOTES
+
+- Must initialize Aubio MFCC pipeline externally:
+  pvoc + fftgrain + mfcc + fvec buffers
+
+- Must initialize PortAudio before calling processing loop
+
+- voice_process() assumes continuous streaming input
+
+- Do NOT call processing function without initialized audio system
+
+------------------------------------------------------------
+
+EXPECTED BEHAVIOR
+
+- System will ignore silence
+- System will only compute MFCCs during speech-like energy
+- System updates detection periodically or after speech bursts
+- Detection stabilizes using smoothing window
+
+------------------------------------------------------------
+
+KNOWN LIMITATIONS
+
+- Sensitive to microphone quality
+- Sensitive to room acoustics
+- Not a neural model (simple distance classifier)
+- Performance depends heavily on energy threshold tuning
+
+------------------------------------------------------------
+END OF DOCUMENT
