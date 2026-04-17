@@ -36,6 +36,7 @@ void reset_cumulative_mfcc (cumulative_mfcc *cm){
 	cm->count = 0;
 }
 
+
 //Compute mfcc average
 void average_mfcc(cumulative_mfcc *cm){
 	int k = 0;
@@ -66,6 +67,7 @@ float compute_sound_energy(int frames_per_buffer, short *buffer){
 	return sum_energy;
 }
 
+
 // Compute MFCCs
 void compute_mfcc(aubio_pvoc_t *pv, fvec_t *process_input, cvec_t *fftgrain, aubio_mfcc_t *mfcc, fvec_t *mfcc_out){
 	aubio_pvoc_do(pv, process_input, fftgrain);
@@ -88,7 +90,6 @@ float compute_mfcc_difference(float *user_mfccs, float *mfcc_avg, int n_coeffs){
 
 
 int main(void){
-	
 	// For Audio processing
 	PaError pa_err;
 	pa_err = Pa_Initialize();	//Init port audio	
@@ -99,22 +100,23 @@ int main(void){
 	
 	PaStream* stream; //Create Stream
 	PaStreamParameters inputDevice = {0};
-	int sample_rate = 48000;	//Default sample rate from device
-	int frames_per_buffer = 1024;	//try 256 for now
-	short buffer[frames_per_buffer];		//Buffer initialize, using short whule I have the mic input as int16
-	inputDevice.channelCount = 1;	//Device only has once channel
-	inputDevice.device = 1;	//
+	int sample_rate = 48000;			// Default sample rate from device
+	int frames_per_buffer = 1024;		// try 256 for now
+	short buffer[frames_per_buffer];	// Buffer initialize, using short whule I have the mic input as int16
+	inputDevice.channelCount = 1;		// Device only has once channel
+	//inputDevice.device = 1;			// If the device ID is known, this can replace the line below.
+	inputDevice.device = Pa_GetDefaultInputDevice(); // Using default device in case there is more than one input source.
 	inputDevice.hostApiSpecificStreamInfo = NULL;
-	inputDevice.suggestedLatency = Pa_GetDeviceInfo(inputDevice.device)->defaultHighInputLatency;	//From device info, default low latency = 0.0080
-	inputDevice.sampleFormat = paInt16; //Use int16 for now
+	inputDevice.suggestedLatency = Pa_GetDeviceInfo(inputDevice.device)->defaultHighInputLatency;	// From device info, default low latency = 0.0080
+	inputDevice.sampleFormat = paInt16; // Use int16 for now
 	int user_detected = 0;
 	
 	// For MFCC - Voice Recognition
-	uint_t buf_size = frames_per_buffer; //buffer size
+	uint_t buf_size = frames_per_buffer; // buffer size
 	uint_t hop_s = frames_per_buffer/1; // block size
 	uint_t sample_rate_for_mfcc = sample_rate; // samplerate
 	uint_t n_filters = 40; // number of filters
-	//Noete: workflow for MFCC input -> PVOC -> MFCC
+	//Note: workflow for MFCC input -> PVOC -> MFCC
 	fvec_t *process_input = new_fvec(hop_s);       // phase vocoder input
 	aubio_pvoc_t *pv = 0;	//phase vector
 	pv = new_aubio_pvoc(buf_size, hop_s);
@@ -161,36 +163,37 @@ int main(void){
 			return -1;
 		}
 		while(buffers_recorded < buffers_to_rec){	//Continue recording until deisred buffers are recorded
-		pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
-		if (pa_err != 0){
-			printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
-			break;
-		}
-		
-		//Processing and MFCC
-		sum_energy = compute_sound_energy(frames_per_buffer, buffer); 
-		if (sum_energy > ENERGY_THRESHOLD){
-			for (k = 0; k < frames_per_buffer; k++){
-				process_input->data[k] = buffer[k] / 32768.0f;
+			pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
+			if (pa_err != 0){
+				printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
+				break;
 			}
-			compute_mfcc(pv, process_input, fftgrain, mfcc, mfcc_out);	//compute mfccs
-			accumulate_mfcc(&cm, mfcc_out); //Accumulate MFCCs for processing
+			
+			//Processing and MFCC
+			sum_energy = compute_sound_energy(frames_per_buffer, buffer); 
+			if (sum_energy > ENERGY_THRESHOLD){
+				for (k = 0; k < frames_per_buffer; k++){
+					process_input->data[k] = buffer[k] / 32768.0f;
+				}
+				compute_mfcc(pv, process_input, fftgrain, mfcc, mfcc_out);	//compute mfccs
+				accumulate_mfcc(&cm, mfcc_out); //Accumulate MFCCs for processing
+			}
+			buffers_recorded++;
 		}
-		buffers_recorded++;
+		if(cm.count > 0){
+			average_mfcc(&cm);
+		}
+		for(k = 0; k < N_COEFFS; k++){
+			user.user_mfcc[k] = cm.mfcc_avg[k];
+		}	
+		user_training_status = 1;
+		buffers_recorded = 0;
+		reset_cumulative_mfcc(&cm);
+		printf("Training Complete \n");
 	}
-	if(cm.count > 0){
-		average_mfcc(&cm);
-	}
-	for(k = 0; k < N_COEFFS; k++){
-		user.user_mfcc[k] = cm.mfcc_avg[k];
-	}	
-	user_training_status = 1;
-	buffers_recorded = 0;
-	reset_cumulative_mfcc(&cm);
-	printf("Training Complete \n");
-}
-	
-	while(1){	//Continue recording until deisred buffers are recorded
+
+	// Continue recording until deisred buffers are recorded
+	while(1){
 		pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
 		if (pa_err != 0){
 			printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
@@ -199,7 +202,7 @@ int main(void){
 		
 		//fwrite(buffer, 2, frames_per_buffer, test_file_ptr);	//Write to .raw test_file. Writing "frames_per_buffer" samples into file, data size is 2 (2 bytes, small) 
 		
-		//Processing and MFCC
+		// Processing and MFCC
 		sum_energy = compute_sound_energy(frames_per_buffer, buffer); 
 		if (sum_energy > ENERGY_THRESHOLD){
 			for (k = 0; k < frames_per_buffer; k++){
@@ -240,10 +243,10 @@ int main(void){
 	del_cvec(fftgrain);
 	
 	// End Port Audio
-	fclose(test_file_ptr);	//Close file
-	Pa_StopStream(stream);	//Stop stream
-	Pa_CloseStream(stream);	//Close stream
-	Pa_Terminate(); //End port audio
+	fclose(test_file_ptr);	// Close file
+	Pa_StopStream(stream);	// Stop stream
+	Pa_CloseStream(stream);	// Close stream
+	Pa_Terminate(); 		// End port audio
 
 	return 0;
 }

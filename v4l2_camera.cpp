@@ -8,6 +8,11 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <stdio.h>
+
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
@@ -25,14 +30,33 @@ int xioctl(int fd, int request, void* arg) {
     return ret;
 }
 
+// get filename with time information for saving frames.
+std::string make_filename(const std::string& prefix, const std::string& ext) {
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+
+    std::tm tm{};
+    localtime_r(&time, &tm);
+
+    std::ostringstream oss;
+    oss << prefix << "_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << "." << ext;
+
+    return oss.str();
+}
+
 
 int main() {
     // openCapture enabled will capture indefinitely. 
     bool openCapture = 1;
+    // fall back on capturing a fixed number of frames.
     int closedCaptureNumFrames = 300;
+    // do you want to save frames?
+    bool saveFrames = 0;
     int width = 1920; //1280
     int height = 1080; //720
-    std::string outFile = "output.mjpg";
+    std::string outFile;
+    std::tm tm{};
+    std::ostringstream oss;
 
     // should be this device, but check on system if there's no connection.
     const char* dev = "/dev/video0";
@@ -120,17 +144,25 @@ int main() {
         return 1;
     }
 
-
-    std::ofstream outfile(outFile, std::ios::binary);
+    // empty unless we want to save frames, then change stream params
+    std::ofstream outfile;
+    if (saveFrames){
+        outFile = make_filename("output_","mjpg");
+    }
     pollfd pfd = {fd, POLLIN, 0};
 
     for (int frame_count = 0; frame_count * !openCapture < closedCaptureNumFrames; ++frame_count) {
         // Wait for frame
-        // 1000 ms / 30 fps = 33.33 ms / frame
+        // 1000 ms / 30 fps = 33.33 ms / frame -> 35 ms
         int r = poll(&pfd, 1, 35);
         if (r <= 0) {
             std::cerr << "poll timeout\n";
             continue;
+        }
+
+        if (saveFrames){
+            outFile = make_filename("output_","mjpg");
+            outfile = std::ofstream(outFile, std::ios::binary);
         }
 
         // Dequeue buffer
@@ -145,7 +177,12 @@ int main() {
         }
 
         // Write MJPEG frame
-        outfile.write((char*)buffers[buf.index].start, buf.bytesused);
+        if (saveFrames){
+            outfile.write((char*)buffers[buf.index].start, buf.bytesused);
+            outfile.close();
+            std::cout << "Saved MJPEG stream to: " << outFile << "\n";
+            outFile.clear();
+        }
 
         // Requeue buffer
         if (xioctl(fd, VIDIOC_QBUF, &buf) < 0) {
@@ -165,7 +202,6 @@ int main() {
     }
 
     close(fd);
-    outfile.close();
-    std::cout << "Saved MJPEG stream to: " << outFile << "\n";
+
     return 0;
 }

@@ -75,7 +75,7 @@ int main(void){
 	PaStreamParameters inputDevice = {0};
 	int sample_rate = 16000;	//Default sample rate from device
 	int frames_per_buffer = 1024;	//try 256 for now
-	short buffer[frames_per_buffer];		//Buffer initialize, using short whule I have the mic input as int16
+	short buffer[frames_per_buffer];		//Buffer initialize, using short while the mic input is int16
 	inputDevice.channelCount = 1;	//Device only has once channel
 	inputDevice.device = Pa_GetDefaultInputDevice();	//Device is on channel index 1
 	inputDevice.hostApiSpecificStreamInfo = NULL;
@@ -101,9 +101,9 @@ int main(void){
 	test_file_ptr = fopen("test_file.raw", "wb");
 	if(test_file_ptr == NULL){
 		printf("File Open Error \n");
-		return -1
+		return -1;
 	}
-	pa_err = Pa_OpenStream(&stream, &inputDevice, NULL, sample_rate, frames_per_buffer,paNoFlag , NULL, NULL);	//Initialize stream
+	pa_err = Pa_OpenStream(&stream, &inputDevice, NULL, sample_rate, frames_per_buffer, paNoFlag, NULL, NULL);	//Initialize stream
 	if(pa_err != paNoError){
 		printf("PortAudio Open Stream Error \n");
 		return -1;
@@ -115,7 +115,7 @@ int main(void){
 	}
 	
 	// Normal vars for calcs
-	int secs_to_rec = 100;	//Seconds to record before ending
+	int secs_to_rec = 10;	//Seconds to record before ending
 	int buffers_to_rec = secs_to_rec * sample_rate / frames_per_buffer;	//Number of buffers that will be recorded
 	int buffers_recorded = 0;	// init buffers recorded to increment as recoring proceeds
 	float mfcc_sum[N_COEFFS] = {0};	//init sum of mfcc coeffs
