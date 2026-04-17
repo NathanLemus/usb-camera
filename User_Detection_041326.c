@@ -24,6 +24,7 @@
 #include <aubio/aubio.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <stdint.h>
 
 // Define magic number variable
 #define ENERGY_THRESHOLD 0.0001f
@@ -32,6 +33,54 @@
 #define DETECTION_OFF_THRESHOLD 2.5f
 #define SMOOTH_WINDOW 5
 #define UPDATE_SECONDS 1 //max time before an update is made to a speaker detection
+
+// For buffer to Python
+#define BUFFER_SIZE 1024
+#define FRAME_SIZE 128
+
+// for buffer to Python
+// (not to be confused with buffer used for Audio processing locally)
+static uint8_t share_buffer[BUFFER_SIZE][FRAME_SIZE];
+static volatile int write_idx = 0;
+static volatile int read_idx = 0;
+
+static inline int next(int idx) {
+    return (idx + 1) % BUFFER_SIZE;
+}
+
+// For buffer to Python
+void write_to_buff(bool detected){
+	int next_write = next(write_idx);
+
+    // drop oldest in the queue
+    if (next_write == read_idx) {
+        read_idx = next(read_idx);
+    }
+
+    uint8_t *slot = share_buffer[write_idx];
+
+    for (int i = 0; i < FRAME_SIZE; i++) {
+        slot[i] = (uint8_t)(detected);
+    }
+
+    write_idx = next_write;
+}
+
+// For buffer to Python
+int consume(uint8_t *out) {
+    if (read_idx == write_idx) {
+        return 0; // empty
+    }
+
+    uint8_t *slot = share_buffer[read_idx];
+
+    for (int i = 0; i < FRAME_SIZE; i++) {
+        out[i] = slot[i];
+    }
+
+    read_idx = next(read_idx);
+    return 1;
+}
 
 // Define system testing or training mode
 typedef enum{
@@ -199,9 +248,13 @@ void voice_process(short *buffer, int frames_per_buffer){
         }
 		if (user_detected == 1){
 			printf("User Detected! \n");
+			// Boolean signal to Python Executor
+			write_to_buff(1);
 		}
 		else{
 			printf("No user detected \n");
+			// Boolean signal to Python Executor
+			write_to_buff(0);
 		}
         printf("Smoothed diff: %f\n\n", smoothed_difference);
 
@@ -309,7 +362,7 @@ int main(void){
 			printf("PortAudio Start Stream Error: %s\n", Pa_GetErrorText(pa_err));
 			return -1;
 		}
-		while(buffers_recorded < buffers_to_rec){	//Continue recording until deisred buffers are recorded
+		while(buffers_recorded < buffers_to_rec){	//Continue recording until desired buffers are recorded
 			pa_err = Pa_ReadStream(stream, buffer, frames_per_buffer);	//Read (frames_per_buffer) samples from stream into buffer
 			if (pa_err != 0){
 				printf("PortAudio Read Stream Error: %s\n", Pa_GetErrorText(pa_err));
@@ -373,7 +426,7 @@ int main(void){
 		
 		//Processing and MFCC
 		voice_process(buffer, frames_per_buffer);
-							
+
 		buffers_recorded++;
 	}
 	
