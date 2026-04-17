@@ -1,4 +1,5 @@
 mfcc_files/user_mfcc.bin
+*.bak
 *.so
 *.o
 *.raw
