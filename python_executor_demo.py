@@ -1,3 +1,11 @@
+"""
+This code is used to read trigger signals from C code.
+Specifically, this reads a boolean generated from the User_Detection_041326.c file.
+The boolean whether a user is detected is saved to a circular buffer and read in Python via
+    the ctypes.CDLL call to read the C file's generated .so file.
+This code is meant to bridge the C and Python implementation, as the trigger signals are needed
+    in Python to continue with the rest of the system's flow.
+"""
 import ctypes
 import threading
 import time

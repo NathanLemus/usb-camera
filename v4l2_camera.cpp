@@ -9,17 +9,70 @@
 #include <iostream>
 #include <vector>
 #include <stdio.h>
-
+#include <stdint.h>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
+#define WIDTH 1920
+#define HEIGHT 1080
+#define CHANNELS 32
+
+// For buffer to Python
+#define BUFFER_SIZE 10
+#define FRAME_SIZE (WIDTH * HEIGHT * CHANNELS)
+
+// for buffer to Python
+// (not to be confused with buffer used for Audio processing locally)
+static uint8_t share_buffer[BUFFER_SIZE][FRAME_SIZE];
+static volatile int write_idx = 0;
+static volatile int read_idx = 0;
+
+// for buffer to Python
+static inline int next(int idx) {
+    return (idx + 1) % BUFFER_SIZE;
+}
+
 struct Buffer {
     void* start;
     size_t length;
 };
+
+// This needs an EXTERN "C" block, as Python's CTYPES
+//  has issues finding these methods if this is not 
+//  explicitly used.
+extern "C" {
+    // For buffer to Python
+    void write_to_buff(const uint8_t *buffer_frame){
+    	int next_write = next(write_idx);
+
+        // drop oldest in the queue
+        if (next_write == read_idx) {
+            read_idx = next(read_idx);
+        }
+
+        memcpy(share_buffer[write_idx], buffer_frame, FRAME_SIZE);
+
+        write_idx = next_write;
+    }
+
+    // For buffer to Python
+    // This is part of the demo where fake frames are generated.
+    // Helpful for passthrough testing of the system without worrying about camera faults.
+    int consume(uint8_t *out) {
+        if (read_idx == write_idx) {
+            return 0; // empty
+        }
+
+        memcpy(out, share_buffer[read_idx], FRAME_SIZE);
+
+        read_idx = next(read_idx);
+        return 1;
+    }
+}
+
 
 // https://www.kernel.org/doc/html/v4.9/media/uapi/v4l/capture.c.html
 int xioctl(int fd, int request, void* arg) {
@@ -52,8 +105,8 @@ int main() {
     int closedCaptureNumFrames = 300;
     // do you want to save frames?
     bool saveFrames = 0;
-    int width = 1920; //1280
-    int height = 1080; //720
+    int width = WIDTH;
+    int height = HEIGHT;
     std::string outFile;
     std::tm tm{};
     std::ostringstream oss;
@@ -183,6 +236,8 @@ int main() {
             std::cout << "Saved MJPEG stream to: " << outFile << "\n";
             outFile.clear();
         }
+
+        write_to_buff((uint8_t*)buffers[buf.index].start);
 
         // Requeue buffer
         if (xioctl(fd, VIDIOC_QBUF, &buf) < 0) {
