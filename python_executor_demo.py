@@ -1,10 +1,11 @@
 import ctypes
 import threading
 import time
+import datetime
 
 # buffer for passing data out of C and C++ code.
-BUFFER_SIZE = 1024
-FRAME_SIZE = 128
+BUFFER_SIZE = 8
+FRAME_SIZE = 32
 
 # using a global signal in Python to determine what the C is doing.
 logic = 0
@@ -49,7 +50,7 @@ t_cons.start()
 # perform logic here for interpreting the signals.
 while True:
     if logic == 1:
-        print("True")
+        print("True", datetime.datetime.now())
     else:
         pass
 

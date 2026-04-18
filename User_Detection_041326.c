@@ -35,8 +35,8 @@
 #define UPDATE_SECONDS 1 //max time before an update is made to a speaker detection
 
 // For buffer to Python
-#define BUFFER_SIZE 1024
-#define FRAME_SIZE 128
+#define BUFFER_SIZE 8
+#define FRAME_SIZE 32
 
 // for buffer to Python
 // (not to be confused with buffer used for Audio processing locally)
