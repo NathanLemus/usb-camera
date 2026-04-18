@@ -39,13 +39,9 @@ def consumer_loop():
     while True:
         if lib.consume(buf):
             frame = np.frombuffer(buf, dtype=np.uint8)
-            print("A")
             frame = frame.reshape((HEIGHT, WIDTH, CHANNELS))
-            print("B")
             img = mpimg.imread(frame)
-            print("C")
             imgplot = plt.imshow(img)
-            print("D")
             plt.show()
 
             print("Frame mean:", frame.mean())
